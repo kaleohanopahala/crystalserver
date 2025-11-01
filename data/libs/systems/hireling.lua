@@ -251,7 +251,7 @@ function Hireling:setOutfit(outfit)
 	self.lookhead = outfit.lookHead
 	self.lookbody = outfit.lookBody
 	self.looklegs = outfit.lookLegs
-	self.lookfeet = outfit.lookHead
+	self.lookfeet = outfit.lookFeet
 	self.lookAddons = outfit.lookAddons
 end
 
@@ -326,23 +326,42 @@ function Hireling:spawn()
 	npc:setSpeechBubble(7)
 
 	npc:place(self:getPosition())
-	creature:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
 	self:setCreature(npc:getId())
+	self:registerReturnToLampAction()
 end
 
-function Hireling:returnToLamp(player_id)
+function Hireling:registerReturnToLampAction()
+	local action = Action()
+	function action.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+		local hireling = getHirelingByPosition(toPosition)
+		if not hireling or not hireling:canTalkTo(player) then
+			return false
+		end
+		if hireling:getOwnerId() ~= player:getGuid() then
+			return false
+		end
+		hireling:returnToLamp(player:getGuid())
+		return true
+	end
+	action:position(self:getPosition())
+	action:register()
+end
+
+-- hireling.lua
+function Hireling:returnToLamp(player_id, silent)
 	if self.active ~= 1 then
 		return
 	end
 
+	Game.removeAction(self:getPosition())
+
 	local player = Player(player_id)
 	if self:getOwnerId() ~= player_id then
-		player:getPosition():sendMagicEffect(CONST_ME_POFF)
-		return player:sendTextMessage(MESSAGE_FAILURE, "You are not the master of this hireling.")
+		return player:sendTextMessage(MESSAGE_FAILURE, "Sorry, not possible.")
 	end
 
 	self.active = 0
-	addEvent(function(npcId, ownerGuid, hirelingId)
+	addEvent(function(npcId, ownerGuid, hirelingId, silentFlag)
 		local npc = Npc(npcId)
 		if not npc then
 			return logger.error("[Hireling:returnToLamp] - Npc not found or is nil.")
@@ -368,17 +387,19 @@ function Hireling:returnToLamp(player_id)
 
 		local hireling = getHirelingById(hirelingId)
 		if not hireling then
-			return logger.error("[Hireling:returnToLamp] - Hireling not found or is nil for hireling name for player {}.", owner:getName())
+			return logger.error("[Hireling:returnToLamp] - Hireling not found or is nil for player {}.", owner:getName())
 		end
 
-		npc:say("As you wish!", TALKTYPE_PRIVATE_NP, false, owner, npc:getPosition())
+		if not silentFlag then
+			npc:say("As you wish!", TALKTYPE_PRIVATE_NP, false, owner, npc:getPosition())
+		end
+
 		local lamp = inbox:addItem(HIRELING_LAMP, 1, INDEX_WHEREEVER, FLAG_NOLIMIT)
-		npc:getPosition():sendMagicEffect(CONST_ME_PURPLESMOKE)
-		npc:remove() --remove hireling
+		npc:remove()
 		lamp:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, "This mysterious lamp summons your very own personal hireling.\nThis item cannot be traded.\nThis magic lamp is the home of " .. self:getName() .. ".")
-		lamp:setCustomAttribute("Hireling", hirelingId) --save hirelingId on item
+		lamp:setCustomAttribute("Hireling", hirelingId)
 		hireling:setPosition({ x = 0, y = 0, z = 0 })
-	end, 1000, self.cid, player:getGuid(), self.id)
+	end, 1000, self.cid, player:getGuid(), self.id, silent and true or false)
 end
 
 -- [[ END CLASS DEFINITION ]]
@@ -423,6 +444,17 @@ function getHirelingByPosition(position)
 	for i = 1, #HIRELINGS do
 		hireling = HIRELINGS[i]
 		if hireling.posx == position.x and hireling.posy == position.y and hireling.posz == position.z then
+			return hireling
+		end
+	end
+	return nil
+end
+
+function getHirelingByCid(cid)
+	local hireling
+	for i = 1, #HIRELINGS do
+		hireling = HIRELINGS[i]
+		if hireling.cid == cid then
 			return hireling
 		end
 	end
