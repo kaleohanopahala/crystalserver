@@ -1566,9 +1566,6 @@ const char* getReturnMessage(ReturnValue value) {
 		case RETURNVALUE_ITEMUNTRADEABLE:
 			return "This item is untradeable.";
 
-		case RETURNVALUE_NOTOWNHIRELING:
-			return "You are not the owner of this hireling.";
-
 		case RETURNVALUE_NOTENOUGHHARMONY:
 			return "You do not have enough harmony.";
 
