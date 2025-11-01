@@ -6230,7 +6230,7 @@ void Game::playerTurn(uint32_t playerId, Direction dir) {
 	internalCreatureTurn(player, dir);
 }
 
-void Game::playerRequestOutfit(uint32_t playerId) {
+void Game::playerRequestOutfit(uint32_t playerId, uint32_t creatureId /* = 0 */) {
 	if (!g_configManager().getBoolean(ALLOW_CHANGEOUTFIT)) {
 		return;
 	}
@@ -6245,7 +6245,11 @@ void Game::playerRequestOutfit(uint32_t playerId) {
 		return;
 	}
 
-	player->sendOutfitWindow();
+	if (creatureId != 0 && creatureId != player->getID()) {
+		creatureId = player->getID();
+	}
+
+	player->sendOutfitWindow(creatureId);
 	player->setNextExAction(OTSYS_TIME() + g_configManager().getNumber(UI_ACTIONS_DELAY_INTERVAL) - 10);
 }
 

@@ -1390,7 +1390,14 @@ void ProtocolGame::parsePacketFromDispatcher(NetworkMessage &msg, uint8_t recvby
 				outfitModule->executeOnRecvbyte(player, msg);
 			}
 			if (msg.getBufferPosition() == startBufferPosition) {
-				g_game().playerRequestOutfit(player->getID());
+				uint32_t creatureId = 0;
+				if (!oldProtocol) {
+					auto availableBytes = static_cast<int32_t>(msg.getLength() - msg.getBufferPosition());
+					if (availableBytes >= static_cast<int32_t>(sizeof(uint32_t))) {
+						creatureId = msg.get<uint32_t>();
+					}
+				}
+				g_game().playerRequestOutfit(player->getID(), creatureId);
 			}
 			break;
 		}
@@ -1809,7 +1816,59 @@ void ProtocolGame::parseSetOutfit(NetworkMessage &msg) {
 	}
 
 	if (msg.getBufferPosition() == startBufferPosition) {
-		uint8_t outfitType = !oldProtocol ? msg.getByte() : 0;
+		uint32_t creatureId = 0;
+		uint8_t outfitType = 0;
+		if (!oldProtocol) {
+			int32_t availableBytes = static_cast<int32_t>(msg.getLength() - msg.getBufferPosition());
+			if (availableBytes <= 0) {
+				return;
+			}
+
+			const uint32_t expectedTargetId = player->getOutfitWindowTargetId();
+			bool readCreatureId = false;
+
+			if (availableBytes >= static_cast<int32_t>(sizeof(uint32_t) + sizeof(uint8_t))) {
+				uint16_t bufferPosition = msg.getBufferPosition();
+				uint32_t candidateId = msg.get<uint32_t>();
+				uint8_t candidateOutfitType = msg.getByte();
+
+				bool idMatches = false;
+				if (expectedTargetId != 0) {
+					idMatches = candidateId == expectedTargetId;
+				} else {
+					idMatches = candidateId == player->getID();
+				}
+
+				if (idMatches) {
+					idMatches = candidateOutfitType <= 2;
+				}
+
+				if (idMatches) {
+					creatureId = candidateId;
+					outfitType = candidateOutfitType;
+					readCreatureId = true;
+				} else {
+					msg.setBufferPosition(bufferPosition);
+				}
+			}
+
+			if (!readCreatureId) {
+				outfitType = msg.getByte();
+			}
+
+			if (creatureId != 0 && creatureId != player->getID() && creatureId != expectedTargetId) {
+				return;
+			}
+
+			if (expectedTargetId != 0 && creatureId != expectedTargetId) {
+				return;
+			}
+
+			if (expectedTargetId != 0 && creatureId == 0) {
+				return;
+			}
+		}
+
 		Outfit_t newOutfit;
 		newOutfit.lookType = msg.get<uint16_t>();
 		newOutfit.lookHead = std::min<uint8_t>(132, msg.getByte());
@@ -7543,6 +7602,13 @@ void ProtocolGame::sendHouseWindow(uint32_t windowTextId, const std::string &tex
 void ProtocolGame::sendOutfitWindow() {
 	NetworkMessage msg;
 	msg.addByte(0xC8);
+
+	if (!oldProtocol) {
+		uint32_t creatureId = player->getOutfitWindowTargetId();
+		if (creatureId != 0) {
+			msg.add<uint32_t>(creatureId);
+		}
+	}
 
 	Outfit_t currentOutfit = player->getDefaultOutfit();
 	auto isSupportOutfit = player->isWearingSupportOutfit();
